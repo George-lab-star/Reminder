@@ -1,0 +1,4 @@
+dotenv
+aiogram
+aiohttp
+pydantic

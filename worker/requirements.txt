@@ -1,0 +1,4 @@
+aiohttp
+celery
+aiogram
+redis

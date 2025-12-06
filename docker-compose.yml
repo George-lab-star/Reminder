@@ -1,0 +1,133 @@
+# version: '3.8'
+
+# services:
+#   db:
+#     image: postgres:17
+#     container_name: reminders_db
+#     environment:
+#       POSTGRES_USER: ${POSTGRES_USER}
+#       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+#       POSTGRES_DB: ${POSTGRES_DB}
+#     ports:
+#       - "5432:5432"
+#     volumes:
+#       - postgres_data:/var/lib/postgresql/data
+#     healthcheck:
+#       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+#       interval: 10s
+#       timeout: 5s
+#       retries: 5
+
+#   # API сервис (FastAPI)
+#   api:
+#     build: ./backend
+#     container_name: reminders_api
+#     ports:
+#       - "8000:8000"
+#     environment:
+#       DATABASE_URL: ${DATABASE_URL}
+#     volumes:
+#       - ./backend:/app
+#     depends_on:
+#       - db
+
+#   # # Бот (Telegram)
+#   # bot:
+#   #   build: ./src/presentation/bot_runner
+#   #   container_name: reminders_bot
+#   #   environment:
+#   #     BOT_TOKEN: ${BOT_TOKEN}
+#   #     DATABASE_URL: ${DATABASE_URL}
+#   #     ENVIRONMENT: ${ENVIRONMENT}
+#   #   depends_on:
+#   #     - db
+#   #   restart: unless-stopped
+
+# # Объёмы данных
+# volumes:
+#   postgres_data:
+#     driver: local
+
+
+version: '3.8'
+
+services:
+  # API (FastAPI)
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+    - ./backend:/app
+    depends_on:
+      - db
+      - redis
+    networks:
+      - app_network
+
+  # Telegram-бот
+  bot:
+    build:
+      context: ./bot
+      dockerfile: Dockerfile
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN}
+      API_BASE_URL: http://api:8000
+    volumes:
+      - ./bot:/app
+    depends_on:
+      - api
+    networks:
+      - app_network
+
+  # Celery Worker
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN}
+      API_BASE_URL: http://api:8000
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    volumes:
+      - ./worker:/app
+    depends_on:
+      - api
+      - redis
+    networks:
+      - app_network
+
+  # PostgreSQL
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: reminders
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app_network
+
+  # Redis (для Celery)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - app_network
+
+networks:
+  app_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
